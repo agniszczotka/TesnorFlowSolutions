@@ -5,7 +5,7 @@ import tensorflow as tf
 
 image_size = 28
 num_class = 10
-num_step = 100
+num_step = 1000
 
 
 def accuracy(predictions, labels):
@@ -39,11 +39,12 @@ if __name__ == '__main__':
     valid_dataset_t, valid_labels_t = reformat(valid_dataset_t, valid_labels_t)
     test_dataset_t, test_labels_t = reformat(test_dataset_t, test_labels_t)
     train_subset = 1000
-
+    batch_size = 128
     graph = tf.Graph()
     with graph.as_default():
-        train_dataset = tf.constant(train_dataset_t[:train_subset, :], name="data_set")
-        train_labels = tf.constant(train_labels_t[:train_subset], name="train_labels")
+        batch_dataset_holder = tf.placeholder(dtype=tf.float32, shape=(batch_size, image_size * image_size),
+                                              name="data_set")
+        batch_label_holder = tf.placeholder(dtype=tf.float32, shape=(batch_size, num_class), name="train_labels")
         tf.constant(valid_dataset_t, name="valid_dataset")
         tf.constant(valid_labels_t, name="valid_labels")
 
@@ -69,20 +70,29 @@ if __name__ == '__main__':
         train_predictions = tf.nn.softmax(logistic_classifier)
 
         valid_predictions_hidden1 = tf.nn.relu(tf.matmul(valid_dataset_t, weights1) + biases1)
-        valid_predictions = tf.nn.softmax(tf.nn.relu(tf.matmul(hidden1, weights2) +biases2))
+        valid_predictions = tf.nn.softmax(tf.nn.relu(tf.matmul(hidden1, weights2) + biases2))
 
         test_prediction_hidden1 = tf.nn.relu(tf.matmul(test_dataset_t, weights1) + biases1)
-        test_prediction= tf.nn.softmax(
+        test_prediction = tf.nn.softmax(
             tf.nn.relu(tf.matmul(test_prediction_hidden1, weights2) + biases2))
 
     with tf.Session(graph=graph) as session:
         session.run(tf.global_variables_initializer())
         for step in range(num_step):
-            _, l, predictions = session.run([optimizer, min_loss, train_predictions])
+
+            offset = (step * batch_size) % (train_labels_t.shape[0] - batch_size)
+            print offset
+
+            # Generate a minibatch.
+            batch_data = train_dataset_t[offset:(offset + batch_size), :]
+            batch_labels = train_labels_t[offset:(offset + batch_size), :]
+            feed_dic = {batch_dataset_holder: batch_data,
+                        batch_label_holder: batch_labels}
+            _, l, predictions = session.run([optimizer, min_loss, train_predictions], feed_dict=feed_dic)
             if step % 100 == 0:
                 print('Loss at step %d: %f' % (step, l))
                 print('Training accuracy: %.1f%%' % accuracy(
-                    predictions, train_labels_t[:train_subset, :]))
+                    predictions, batch_labels))
                 # Calling .eval() on valid_prediction is basically like calling run(), but
                 # just to get that one numpy array. Note that it recomputes all its graph
                 # dependencies.
