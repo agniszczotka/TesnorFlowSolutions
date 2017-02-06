@@ -8,6 +8,10 @@ num_class = 10
 num_step = 100
 
 
+def accuracy(predictions, labels):
+    return 100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1)) / predictions.shape[0]
+
+
 def reformat(dataset, labels):
     dataset = dataset.reshape((-1, image_size * image_size)).astype(np.float32)
     # Map 0 to [1.0, 0.0, 0.0 ...], 1 to [0.0, 1.0, 0.0 ...]
@@ -45,19 +49,43 @@ if __name__ == '__main__':
 
         num_class = 10  # train_labels.shape[1]
         size_of_inputs = 28 * 28  # train_dataset_t.shape[1]
-        weights_t = tf.truncated_normal(shape=[size_of_inputs, num_class])
-        biases_t = tf.zeros(shape=num_class)
-        weights = tf.Variable(initial_value=weights_t, name='waights')
-        biases = tf.Variable(initial_value=biases_t, name='bias')
+        nodes = 1024
+        weights_t = tf.truncated_normal(shape=[size_of_inputs, nodes])
+        biases_t = tf.zeros(shape=nodes)
 
-        logistic_classifier = tf.matmul(train_dataset_t, weights) + biases
+        weights1 = tf.Variable(initial_value=weights_t, name='waights')
+        biases1 = tf.Variable(initial_value=biases_t, name='bias')
+
+        weights2 = tf.Variable(initial_value=tf.truncated_normal(shape=[nodes, num_class]))
+        biases2 = tf.Variable(initial_value=tf.zeros(shape=num_class))
+
+        hidden1 = tf.nn.relu(tf.matmul(train_dataset_t, weights1) + biases1)
+
+        logistic_classifier = tf.nn.relu(tf.matmul(hidden1, weights2) + biases2)
+
         loss = tf.nn.softmax_cross_entropy_with_logits(logits=logistic_classifier, labels=train_labels_t)
         min_loss = tf.reduce_mean(loss)
         optimizer = tf.train.GradientDescentOptimizer(0.5).minimize(min_loss)
         train_predictions = tf.nn.softmax(logistic_classifier)
+
+        valid_predictions_hidden1 = tf.nn.relu(tf.matmul(valid_dataset_t, weights1) + biases1)
+        valid_predictions = tf.nn.softmax(tf.nn.relu(tf.matmul(hidden1, weights2) +biases2))
+
+        test_prediction_hidden1 = tf.nn.relu(tf.matmul(test_dataset_t, weights1) + biases1)
+        test_prediction= tf.nn.softmax(
+            tf.nn.relu(tf.matmul(test_prediction_hidden1, weights2) + biases2))
+
     with tf.Session(graph=graph) as session:
         session.run(tf.global_variables_initializer())
         for step in range(num_step):
             _, l, predictions = session.run([optimizer, min_loss, train_predictions])
-
-        print "The end of learing."
+            if step % 100 == 0:
+                print('Loss at step %d: %f' % (step, l))
+                print('Training accuracy: %.1f%%' % accuracy(
+                    predictions, train_labels_t[:train_subset, :]))
+                # Calling .eval() on valid_prediction is basically like calling run(), but
+                # just to get that one numpy array. Note that it recomputes all its graph
+                # dependencies.
+                print('Validation accuracy: %.1f%%' % accuracy(
+                    valid_predictions.eval(), valid_labels_t))
+        print('Test accuracy: %.1f%%' % accuracy(test_prediction.eval(), test_labels_t))
